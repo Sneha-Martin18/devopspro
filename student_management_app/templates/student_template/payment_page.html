@@ -1,0 +1,67 @@
+{% extends 'student_template/base_template.html' %}
+
+{% block page_title %}
+    Pay Fine
+{% endblock page_title %}
+
+{% block main_content %}
+<section class="content">
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-md-6 mx-auto">
+        <div class="card card-primary">
+          <div class="card-header">
+            <h3 class="card-title">Fine Payment</h3>
+          </div>
+          <div class="card-body">
+            <div class="alert alert-info">
+              <h5><i class="icon fas fa-info"></i> Fine Details</h5>
+              <ul class="list-unstyled">
+                <li><strong>Amount:</strong> ₹{{ fine.amount }}</li>
+                <li><strong>Reason:</strong> {{ fine.reason }}</li>
+                <li><strong>Due Date:</strong> {{ fine.due_date }}</li>
+              </ul>
+            </div>
+            
+            <button id="rzp-button" class="btn btn-primary btn-block">Pay Now</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock main_content %}
+
+{% block custom_js %}
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script>
+var options = {
+    "key": "{{ razorpay_key }}", 
+    "amount": "{{ amount_in_paise }}", 
+    "currency": "{{ currency }}",
+    "name": "Student Management System",
+    "description": "Fine Payment",
+    "image": "https://example.com/your_logo",
+    "order_id": "{{ order_id }}", 
+    "handler": function (response){
+        // On successful payment
+        window.location.href = "{% url 'payment_callback' %}?" + 
+            "razorpay_payment_id=" + response.razorpay_payment_id +
+            "&razorpay_order_id=" + response.razorpay_order_id +
+            "&razorpay_signature=" + response.razorpay_signature;
+    },
+    "prefill": {
+        "name": "{{ request.user.first_name }} {{ request.user.last_name }}",
+        "email": "{{ request.user.email }}"
+    },
+    "theme": {
+        "color": "#007bff"
+    }
+};
+var rzp = new Razorpay(options);
+document.getElementById('rzp-button').onclick = function(e){
+    rzp.open();
+    e.preventDefault();
+}
+</script>
+{% endblock custom_js %}

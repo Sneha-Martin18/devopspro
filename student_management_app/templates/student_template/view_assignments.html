@@ -1,0 +1,103 @@
+{% extends 'student_template/base_template.html' %}
+{% load custom_filters %}
+{% block page_title %}
+View Assignments
+{% endblock page_title %}
+{% block main_content %}
+    <!-- Main content -->
+    <section class="content">
+      <div class="container-fluid">
+          <div class="row">
+              <div class="col-12">
+                  <div class="card">
+                      <div class="card-header">
+                          <h3 class="card-title">Assignments</h3>
+                      </div>
+                      <!-- /.card-header -->
+                      <div class="card-body table-responsive">
+                          <table class="table table-hover text-nowrap">
+                              <thead>
+                                  <tr>
+                                      <th>Subject</th>
+                                      <th>Title</th>
+                                      <th>Description</th>
+                                      <th>Due Date</th>
+                                      <th>Status</th>
+                                      <th>Action</th>
+                                  </tr>
+                              </thead>
+                              <tbody>
+                                {% for assignment in assignments %}
+                                <tr>
+                                    <td>{{ assignment.subject_id.subject_name }}</td>
+                                    <td>{{ assignment.title }}</td>
+                                    <td>{{ assignment.description|truncatewords:10 }}</td>
+                                    <td>{{ assignment.due_date }}</td>
+                                    <td>
+                                        {% if assignment.id in submissions %}
+                                            {% with sub=submissions|get_item:assignment.id %}
+                                                {% if sub.status == 'graded' %}
+                                                    Graded ({{ sub.marks }})
+                                                {% else %}
+                                                    Submitted
+                                                {% endif %}
+                                            {% endwith %}
+                                        {% else %}
+                                            Not Submitted
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if assignment.id not in submissions %}
+                                            {% if assignment.due_date|date:'U' > now|date:'U' %}
+                                            <button type="button" class="btn btn-primary btn-sm" data-toggle="modal" data-target="#submitModal{{ assignment.id }}">
+                                                Submit
+                                            </button>
+                                            <!-- Submit Modal -->
+                                            <div class="modal fade" id="submitModal{{ assignment.id }}" tabindex="-1" role="dialog">
+                                                <div class="modal-dialog" role="document">
+                                                    <div class="modal-content">
+                                                        <div class="modal-header">
+                                                            <h5 class="modal-title">Submit Assignment</h5>
+                                                            <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                                                                <span aria-hidden="true">&times;</span>
+                                                            </button>
+                                                        </div>
+                                                        <div class="modal-body">
+                                                            <form method="POST" action="{% url 'student_submit_assignment' assignment.id %}" enctype="multipart/form-data">
+                                                                {% csrf_token %}
+                                                                <div class="form-group">
+                                                                    <label>Upload File</label>
+                                                                    <input type="file" class="form-control" name="submission_file" required>
+                                                                </div>
+                                                                <button type="submit" class="btn btn-primary">Submit</button>
+                                                            </form>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {% else %}
+                                            <button class="btn btn-danger btn-sm" disabled>Due Date Passed</button>
+                                            {% endif %}
+                                        {% else %}
+                                            {% with sub=submissions|get_item:assignment.id %}
+                                            <a href="{{ sub.submission_file.url }}" target="_blank" class="btn btn-info btn-sm">View Submission</a>
+                                            {% endwith %}
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center">No assignments found</td>
+                                </tr>
+                                {% endfor %}
+                              </tbody>
+                          </table>
+                      </div>
+                      <!-- /.card-body -->
+                  </div>
+                  <!-- /.card -->
+              </div>
+          </div>
+      </div>
+    </section>
+{% endblock main_content %}

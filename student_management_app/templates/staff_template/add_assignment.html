@@ -1,0 +1,50 @@
+{% extends 'staff_template/base_template.html' %}
+{% block page_title %}
+Add Assignment
+{% endblock page_title %}
+{% block main_content %}
+    <!-- Main content -->
+    <section class="content">
+      <div class="container-fluid">
+          <div class="row">
+              <div class="col-12">
+                  <div class="card">
+                      <div class="card-header">
+                          <h3 class="card-title">Add New Assignment</h3>
+                      </div>
+                      <!-- /.card-header -->
+                      <div class="card-body">
+                          <form method="POST" action="{% url 'staff_add_assignment_save' %}">
+                              {% csrf_token %}
+                              <div class="form-group">
+                                  <label>Subject</label>
+                                  <select class="form-control" name="subject" required>
+                                      <option value="">Select Subject</option>
+                                      {% for subject in subjects %}
+                                      <option value="{{ subject.id }}">{{ subject.subject_name }}</option>
+                                      {% endfor %}
+                                  </select>
+                              </div>
+                              <div class="form-group">
+                                  <label>Title</label>
+                                  <input type="text" class="form-control" name="title" required>
+                              </div>
+                              <div class="form-group">
+                                  <label>Description</label>
+                                  <textarea class="form-control" name="description" rows="4" required></textarea>
+                              </div>
+                              <div class="form-group">
+                                  <label>Due Date</label>
+                                  <input type="datetime-local" class="form-control" name="due_date" required>
+                              </div>
+                              <button type="submit" class="btn btn-primary">Add Assignment</button>
+                          </form>
+                      </div>
+                      <!-- /.card-body -->
+                  </div>
+                  <!-- /.card -->
+              </div>
+          </div>
+      </div>
+    </section>
+{% endblock main_content %}

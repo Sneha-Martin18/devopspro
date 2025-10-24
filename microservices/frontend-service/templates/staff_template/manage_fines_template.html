@@ -1,0 +1,75 @@
+{% extends 'staff_template/base_template.html' %}
+{% block page_title %}
+    Manage Student Fines
+{% endblock page_title %}
+
+{% block main_content %}
+<section class="content">
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title">Student Fines</h3>
+            <div class="card-tools">
+              <a href="{% url 'add_fine' %}" class="btn btn-primary">Add Fine</a>
+            </div>
+          </div>
+          <!-- /.card-header -->
+          <div class="card-body table-responsive p-0">
+            {% if messages %}
+                {% for message in messages %}
+                    {% if message.tags == 'error' %}
+                        <div class="alert alert-danger">{{ message }}</div>
+                    {% elif message.tags == 'success' %}
+                        <div class="alert alert-success">{{ message }}</div>
+                    {% endif %}
+                {% endfor %}
+            {% endif %}
+            <table class="table table-hover text-nowrap">
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Amount</th>
+                  <th>Reason</th>
+                  <th>Due Date</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for fine in fines %}
+                <tr>
+                  <td>{{ fine.student_id.admin.first_name }} {{ fine.student_id.admin.last_name }}</td>
+                  <td>₹{{ fine.amount }}</td>
+                  <td>{{ fine.reason }}</td>
+                  <td>{{ fine.due_date }}</td>
+                  <td>
+                    {% if fine.paid %}
+                      <span class="badge badge-success">Paid</span>
+                    {% else %}
+                      <span class="badge badge-warning">Pending</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if not fine.paid %}
+                      <a href="{% url 'delete_fine' fine.id %}" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete this fine?')">Delete</a>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% empty %}
+                <tr>
+                  <td colspan="6" class="text-center">No fines found</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <!-- /.card-body -->
+        </div>
+        <!-- /.card -->
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock main_content %}

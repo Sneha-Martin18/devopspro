@@ -1,0 +1,611 @@
+version: '3.8'
+
+services:
+  # Shared Infrastructure
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: microservices_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API Gateway
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - USER_MANAGEMENT_SERVICE_URL=http://user-management:8000
+      - ACADEMIC_SERVICE_URL=http://academic:8001
+      - ATTENDANCE_SERVICE_URL=http://attendance:8002
+      - NOTIFICATION_SERVICE_URL=http://notification:8003
+      - LEAVE_MANAGEMENT_SERVICE_URL=http://leave-management:8004
+      - FEEDBACK_SERVICE_URL=http://feedback:8005
+      - ASSESSMENT_SERVICE_URL=http://assessment:8006
+      - FINANCIAL_SERVICE_URL=http://financial:8007
+    depends_on:
+      - user-management
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # User Management Service
+  user-management:
+    build: ./user-management-service
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=user_service_db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=user-service-secret-key
+      - DEBUG=False
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/users/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # User Management Celery Worker
+  user-management-celery:
+    build: ./user-management-service
+    command: celery -A user_service worker --loglevel=info
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=user_service_db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=user-service-secret-key
+    depends_on:
+      - postgres
+      - redis
+    healthcheck:
+      test: ["CMD", "celery", "-A", "user_service", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Academic Service
+  academic:
+    build: ./academic-service
+    ports:
+      - "8001:8001"
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=academic_service_db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - REDIS_URL=redis://redis:6379/1
+      - SECRET_KEY=academic-service-secret-key
+      - DEBUG=True
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/academics/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Attendance Service
+  attendance:
+    build: ./attendance-service
+    ports:
+      - "8002:8002"
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=attendance_service_db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - REDIS_URL=redis://redis:6379/2
+      - SECRET_KEY=attendance-service-secret-key
+      - DEBUG=True
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/api/v1/attendance/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Notification Service
+  notification:
+    build: ./notification-service
+    ports:
+      - "8003:8003"
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=notification_service_db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - CELERY_BROKER_URL=redis://redis:6379/3
+      - CELERY_RESULT_BACKEND=redis://redis:6379/3
+      - SECRET_KEY=notification-service-secret-key
+      - DEBUG=True
+      - DEFAULT_FROM_EMAIL=noreply@studentmanagement.com
+      - EMAIL_HOST=smtp.sendgrid.net
+      - EMAIL_PORT=587
+      - EMAIL_USE_TLS=True
+      - EMAIL_HOST_USER=apikey
+      - SENDGRID_API_KEY=your-sendgrid-api-key-here
+      - TWILIO_ACCOUNT_SID=your-twilio-account-sid-here
+      - TWILIO_AUTH_TOKEN=your-twilio-auth-token-here
+      - TWILIO_PHONE_NUMBER=your-twilio-phone-number-here
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Notification Service Celery Worker
+  notification-celery:
+    build: ./notification-service
+    command: celery -A notification_service worker --loglevel=info
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=notification_service_db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - CELERY_BROKER_URL=redis://redis:6379/3
+      - CELERY_RESULT_BACKEND=redis://redis:6379/3
+      - SECRET_KEY=notification-service-secret-key
+      - DEBUG=True
+      - DEFAULT_FROM_EMAIL=noreply@studentmanagement.com
+      - EMAIL_HOST=smtp.sendgrid.net
+      - EMAIL_PORT=587
+      - EMAIL_USE_TLS=True
+      - EMAIL_HOST_USER=apikey
+      - SENDGRID_API_KEY=your-sendgrid-api-key-here
+      - TWILIO_ACCOUNT_SID=your-twilio-account-sid-here
+      - TWILIO_AUTH_TOKEN=your-twilio-auth-token-here
+      - TWILIO_PHONE_NUMBER=your-twilio-phone-number-here
+    depends_on:
+      - postgres
+      - redis
+    healthcheck:
+      test: ["CMD", "celery", "-A", "notification_service", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Notification Service Celery Beat (for scheduled tasks)
+  notification-celery-beat:
+    build: ./notification-service
+    command: celery -A notification_service beat --loglevel=info
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=notification_service_db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - CELERY_BROKER_URL=redis://redis:6379/3
+      - CELERY_RESULT_BACKEND=redis://redis:6379/3
+      - SECRET_KEY=notification-service-secret-key
+      - DEBUG=True
+    depends_on:
+      - postgres
+      - redis
+
+  # Leave Management Service
+  leave-management:
+    build: ./leave-management-service
+    ports:
+      - "8004:8004"
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=leave_management_db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - REDIS_URL=redis://redis:6379/4
+      - CELERY_BROKER_URL=redis://redis:6379/4
+      - CELERY_RESULT_BACKEND=redis://redis:6379/4
+      - SECRET_KEY=leave-management-service-secret-key
+      - DEBUG=True
+      - USER_MANAGEMENT_SERVICE_URL=http://user-management:8000
+      - NOTIFICATION_SERVICE_URL=http://notification:8003
+      - ACADEMIC_SERVICE_URL=http://academic:8001
+      - EMAIL_HOST=smtp.sendgrid.net
+      - EMAIL_PORT=587
+      - EMAIL_USE_TLS=True
+      - EMAIL_HOST_USER=apikey
+      - EMAIL_HOST_PASSWORD=your-sendgrid-api-key-here
+      - DEFAULT_FROM_EMAIL=noreply@studentmanagement.com
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Leave Management Service Celery Worker
+  leave-management-celery:
+    build: ./leave-management-service
+    command: celery -A leave_management_service worker --loglevel=info
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=leave_management_db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - REDIS_URL=redis://redis:6379/4
+      - CELERY_BROKER_URL=redis://redis:6379/4
+      - CELERY_RESULT_BACKEND=redis://redis:6379/4
+      - SECRET_KEY=leave-management-service-secret-key
+      - DEBUG=True
+      - USER_MANAGEMENT_SERVICE_URL=http://user-management:8000
+      - NOTIFICATION_SERVICE_URL=http://notification:8003
+      - EMAIL_HOST=smtp.sendgrid.net
+      - EMAIL_PORT=587
+      - EMAIL_USE_TLS=True
+      - EMAIL_HOST_USER=apikey
+      - EMAIL_HOST_PASSWORD=your-sendgrid-api-key-here
+      - DEFAULT_FROM_EMAIL=noreply@studentmanagement.com
+    depends_on:
+      - postgres
+      - redis
+    healthcheck:
+      test: ["CMD", "celery", "-A", "leave_management_service", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Leave Management Service Celery Beat (for scheduled tasks)
+  leave-management-celery-beat:
+    build: ./leave-management-service
+    command: celery -A leave_management_service beat --loglevel=info
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=leave_management_db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - REDIS_URL=redis://redis:6379/4
+      - CELERY_BROKER_URL=redis://redis:6379/4
+      - CELERY_RESULT_BACKEND=redis://redis:6379/4
+      - SECRET_KEY=leave-management-service-secret-key
+      - DEBUG=True
+      - USER_MANAGEMENT_SERVICE_URL=http://user-management:8000
+      - NOTIFICATION_SERVICE_URL=http://notification:8003
+    depends_on:
+      - postgres
+      - redis
+
+  # Feedback Service
+  feedback:
+    build: ./feedback-service
+    ports:
+      - "8005:8005"
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=feedback_service_db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - REDIS_URL=redis://redis:6379/5
+      - CELERY_BROKER_URL=redis://redis:6379/5
+      - CELERY_RESULT_BACKEND=redis://redis:6379/5
+      - SECRET_KEY=feedback-service-secret-key
+      - DEBUG=True
+      - USER_MANAGEMENT_SERVICE_URL=http://user-management:8000
+      - NOTIFICATION_SERVICE_URL=http://notification:8003
+      - ACADEMIC_SERVICE_URL=http://academic:8001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Feedback Service Celery Worker
+  feedback-celery:
+    build: ./feedback-service
+    command: celery -A feedback_service worker --loglevel=info
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=feedback_service_db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - REDIS_URL=redis://redis:6379/5
+      - CELERY_BROKER_URL=redis://redis:6379/5
+      - CELERY_RESULT_BACKEND=redis://redis:6379/5
+      - SECRET_KEY=feedback-service-secret-key
+      - DEBUG=True
+      - USER_MANAGEMENT_SERVICE_URL=http://user-management:8000
+      - NOTIFICATION_SERVICE_URL=http://notification:8003
+      - ACADEMIC_SERVICE_URL=http://academic:8001
+    depends_on:
+      - postgres
+      - redis
+
+  # Feedback Service Celery Beat
+  feedback-celery-beat:
+    build: ./feedback-service
+    command: celery -A feedback_service beat --loglevel=info
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=feedback_service_db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - REDIS_URL=redis://redis:6379/5
+      - CELERY_BROKER_URL=redis://redis:6379/5
+      - CELERY_RESULT_BACKEND=redis://redis:6379/5
+      - SECRET_KEY=feedback-service-secret-key
+      - DEBUG=True
+      - USER_MANAGEMENT_SERVICE_URL=http://user-management:8000
+      - NOTIFICATION_SERVICE_URL=http://notification:8003
+      - ACADEMIC_SERVICE_URL=http://academic:8001
+    depends_on:
+      - postgres
+      - redis
+
+  # Assessment Service
+  assessment:
+    build: ./assessment-service
+    ports:
+      - "8006:8006"
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=assessment_service_db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - REDIS_URL=redis://redis:6379/6
+      - CELERY_BROKER_URL=redis://redis:6379/6
+      - CELERY_RESULT_BACKEND=redis://redis:6379/6
+      - SECRET_KEY=assessment-service-secret-key
+      - DEBUG=True
+      - USER_MANAGEMENT_SERVICE_URL=http://user-management:8000
+      - NOTIFICATION_SERVICE_URL=http://notification:8003
+      - ACADEMIC_SERVICE_URL=http://academic:8001
+      - EMAIL_HOST=smtp.sendgrid.net
+      - EMAIL_PORT=587
+      - EMAIL_USE_TLS=True
+      - EMAIL_HOST_USER=apikey
+      - EMAIL_HOST_PASSWORD=your-sendgrid-api-key-here
+      - DEFAULT_FROM_EMAIL=noreply@studentmanagement.com
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Assessment Service Celery Worker
+  assessment-celery:
+    build: ./assessment-service
+    command: celery -A assessment_service worker --loglevel=info
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=assessment_service_db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - REDIS_URL=redis://redis:6379/6
+      - CELERY_BROKER_URL=redis://redis:6379/6
+      - CELERY_RESULT_BACKEND=redis://redis:6379/6
+      - SECRET_KEY=assessment-service-secret-key
+      - DEBUG=True
+      - USER_MANAGEMENT_SERVICE_URL=http://user-management:8000
+      - NOTIFICATION_SERVICE_URL=http://notification:8003
+      - ACADEMIC_SERVICE_URL=http://academic:8001
+      - EMAIL_HOST=smtp.sendgrid.net
+      - EMAIL_PORT=587
+      - EMAIL_USE_TLS=True
+      - EMAIL_HOST_USER=apikey
+      - EMAIL_HOST_PASSWORD=your-sendgrid-api-key-here
+      - DEFAULT_FROM_EMAIL=noreply@studentmanagement.com
+    depends_on:
+      - postgres
+      - redis
+    healthcheck:
+      test: ["CMD", "celery", "-A", "assessment_service", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Assessment Service Celery Beat
+  assessment-celery-beat:
+    build: ./assessment-service
+    command: celery -A assessment_service beat --loglevel=info
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=assessment_service_db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - REDIS_URL=redis://redis:6379/6
+      - CELERY_BROKER_URL=redis://redis:6379/6
+      - CELERY_RESULT_BACKEND=redis://redis:6379/6
+      - SECRET_KEY=assessment-service-secret-key
+      - DEBUG=True
+      - USER_MANAGEMENT_SERVICE_URL=http://user-management:8000
+      - NOTIFICATION_SERVICE_URL=http://notification:8003
+      - ACADEMIC_SERVICE_URL=http://academic:8001
+    depends_on:
+      - postgres
+      - redis
+
+  # Financial Service
+  financial:
+    build: ./financial-service
+    ports:
+      - "8007:8007"
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=financial_service_db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - REDIS_URL=redis://redis:6379/7
+      - CELERY_BROKER_URL=redis://redis:6379/7
+      - CELERY_RESULT_BACKEND=redis://redis:6379/7
+      - SECRET_KEY=financial-service-secret-key
+      - DEBUG=True
+      - USER_MANAGEMENT_SERVICE_URL=http://user-management:8000
+      - NOTIFICATION_SERVICE_URL=http://notification:8003
+      - ACADEMIC_SERVICE_URL=http://academic:8001
+      - EMAIL_HOST=smtp.sendgrid.net
+      - EMAIL_PORT=587
+      - EMAIL_USE_TLS=True
+      - EMAIL_HOST_USER=apikey
+      - EMAIL_HOST_PASSWORD=your-sendgrid-api-key-here
+      - DEFAULT_FROM_EMAIL=noreply@studentmanagement.com
+      - CURRENCY=INR
+      - LATE_FEE_PERCENTAGE=5
+      - PAYMENT_TIMEOUT_DAYS=30
+      - AUTO_GENERATE_INVOICES=True
+      - ENABLE_INSTALLMENTS=True
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8007/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Financial Service Celery Worker
+  financial-celery:
+    build: ./financial-service
+    command: celery -A financial_service worker --loglevel=info
+    environment:
+      - DB_HOST=postgres
+      - DB_NAME=financial_service_db
+      - DB_USER=postgres
+      - DB_PASSWORD=password
+      - REDIS_URL=redis://redis:6379/7
+      - CELERY_BROKER_URL=redis://redis:6379/7
+      - CELERY_RESULT_BACKEND=redis://redis:6379/7
+      - SECRET_KEY=financial-service-secret-key
+      - DEBUG=True
+      - USER_MANAGEMENT_SERVICE_URL=http://user-management:8000
+      - NOTIFICATION_SERVICE_URL=http://notification:8003
+      - ACADEMIC_SERVICE_URL=http://academic:8001
+      - EMAIL_HOST=smtp.sendgrid.net
+      - EMAIL_PORT=587
+      - EMAIL_USE_TLS=True
+      - EMAIL_HOST_USER=apikey
+      - EMAIL_HOST_PASSWORD=your-sendgrid-api-key-here
+      - DEFAULT_FROM_EMAIL=noreply@studentmanagement.com
+      - CURRENCY=INR
+      - LATE_FEE_PERCENTAGE=5
+      - PAYMENT_TIMEOUT_DAYS=30
+    depends_on:
+      - postgres
+      - redis
+    healthcheck:
+      test: ["CMD", "celery", "-A", "financial_service", "inspect", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Financial Service Celery Beat
+  financial-celery-beat:
+    build: ./financial-service
+    command: celery -A financial_service beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - ./financial-service:/app
+    environment:
+      - DEBUG=True
+      - DATABASE_URL=postgresql://postgres:password@postgres:5432/financial_service_db
+      - REDIS_URL=redis://redis:6379/7
+      - CELERY_BROKER_URL=redis://redis:6379/7
+      - CELERY_RESULT_BACKEND=redis://redis:6379/7
+    depends_on:
+      - postgres
+      - redis
+      - financial
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A financial_service inspect ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend Service
+  frontend:
+    build: ./frontend-service
+    ports:
+      - "9000:9000"
+    volumes:
+      - ./frontend-service:/app
+      - ../static:/app/static_files
+      - ../student_management_app/templates:/app/original_templates
+    environment:
+      - DEBUG=True
+      - SECRET_KEY=frontend-secret-key-change-in-production
+      - API_GATEWAY_URL=http://api-gateway:8080
+      - USER_SERVICE_URL=http://user-management:8000
+      - ACADEMIC_SERVICE_URL=http://academic:8001
+      - ATTENDANCE_SERVICE_URL=http://attendance:8002
+      - NOTIFICATION_SERVICE_URL=http://notification:8003
+      - LEAVE_SERVICE_URL=http://leave-management:8004
+      - FEEDBACK_SERVICE_URL=http://feedback:8005
+      - ASSESSMENT_SERVICE_URL=http://assessment:8006
+      - FINANCIAL_SERVICE_URL=http://financial:8007
+    depends_on:
+      - api-gateway
+      - user-management
+      - academic
+      - attendance
+      - notification
+      - leave-management
+      - feedback
+      - assessment
+      - financial
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+
+networks:
+  default:
+    name: microservices-network

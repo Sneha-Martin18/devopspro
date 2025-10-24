@@ -1,0 +1,24 @@
+[MASTER]
+ignore=migrations,venv,.venv,env,node_modules
+jobs=4
+
+[MESSAGES CONTROL]
+disable=
+    C0111,  # missing-docstring
+    C0103,  # invalid-name
+    R0903,  # too-few-public-methods
+    R0913,  # too-many-arguments
+    W0212,  # protected-access
+    C0330,  # bad-continuation
+    C0326,  # bad-whitespace
+
+[FORMAT]
+max-line-length=120
+indent-string='    '
+
+[DESIGN]
+max-args=10
+max-attributes=15
+max-locals=20
+max-returns=6
+max-branches=15

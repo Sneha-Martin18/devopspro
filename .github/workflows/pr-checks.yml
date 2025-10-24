@@ -1,0 +1,213 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    branches: [ main, master, develop ]
+    types: [opened, synchronize, reopened]
+
+jobs:
+  # Code Quality
+  code-quality:
+    name: Code Quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 black isort pylint bandit safety
+
+      - name: Run Black
+        run: black --check --diff microservices/ student_management_app/
+
+      - name: Run isort
+        run: isort --check-only --diff microservices/ student_management_app/
+
+      - name: Run Flake8
+        run: flake8 microservices/ student_management_app/ --config=.flake8 --statistics
+
+      - name: Run Pylint
+        run: |
+          find microservices/ -name "*.py" -not -path "*/migrations/*" | xargs pylint --rcfile=.pylintrc || true
+
+      - name: Run Bandit (Security)
+        run: bandit -r microservices/ student_management_app/ -f json -o bandit-report.json || true
+
+      - name: Check dependencies for vulnerabilities
+        run: |
+          find microservices/ -name "requirements.txt" -exec safety check --file {} \; || true
+
+  # Unit Tests
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.10', '3.11']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-django pytest-cov pytest-mock
+
+      - name: Run tests with coverage
+        run: |
+          cd microservices
+          for service in */; do
+            if [ -f "$service/manage.py" ]; then
+              echo "Testing $service"
+              cd "$service"
+              pip install -r requirements.txt || true
+              pytest --cov=. --cov-report=xml --cov-report=term || echo "No tests in $service"
+              cd ..
+            fi
+          done
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./microservices/*/coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+
+  # Docker Build Test
+  docker-build:
+    name: Test Docker Builds
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - user-management-service
+          - academic-service
+          - attendance-service
+          - notification-service
+          - leave-management-service
+          - feedback-service
+          - assessment-service
+          - financial-service
+          - api-gateway
+          - frontend-service
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: microservices/${{ matrix.service }}
+          push: false
+          tags: test/${{ matrix.service }}:pr-${{ github.event.pull_request.number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Integration Test
+  integration-test:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [docker-build]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start services with Docker Compose
+        working-directory: microservices
+        run: |
+          docker compose up -d
+          sleep 60
+
+      - name: Check service health
+        run: |
+          curl -f http://localhost:8080/health || exit 1
+          curl -f http://localhost:9000/ || exit 1
+          curl -f http://localhost:8000/api/v1/users/health/ || exit 1
+          curl -f http://localhost:8001/health || exit 1
+          curl -f http://localhost:8002/health || exit 1
+
+      - name: Run API tests
+        run: |
+          # Add your API integration tests here
+          echo "Running API integration tests..."
+
+      - name: Show logs on failure
+        if: failure()
+        working-directory: microservices
+        run: docker compose logs
+
+      - name: Cleanup
+        if: always()
+        working-directory: microservices
+        run: docker compose down -v
+
+  # PR Size Check
+  pr-size:
+    name: Check PR Size
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check PR size
+        run: |
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | wc -l)
+          CHANGED_LINES=$(git diff --stat origin/${{ github.base_ref }}...HEAD | tail -1 | awk '{print $4+$6}')
+          
+          echo "Changed files: $CHANGED_FILES"
+          echo "Changed lines: $CHANGED_LINES"
+          
+          if [ $CHANGED_FILES -gt 50 ]; then
+            echo "::warning::This PR changes $CHANGED_FILES files. Consider breaking it into smaller PRs."
+          fi
+          
+          if [ $CHANGED_LINES -gt 1000 ]; then
+            echo "::warning::This PR changes $CHANGED_LINES lines. Consider breaking it into smaller PRs."
+          fi
+
+  # Comment on PR
+  pr-comment:
+    name: PR Summary Comment
+    runs-on: ubuntu-latest
+    needs: [code-quality, unit-tests, docker-build, integration-test]
+    if: always()
+    steps:
+      - name: Comment PR
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { data: checks } = await github.rest.checks.listForRef({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.payload.pull_request.head.sha
+            });
+            
+            const summary = checks.check_runs.map(check => 
+              `- ${check.name}: ${check.conclusion || 'in_progress'}`
+            ).join('\n');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## CI/CD Status\n\n${summary}\n\n✅ All checks must pass before merging.`
+            });

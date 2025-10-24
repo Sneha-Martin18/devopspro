@@ -1,0 +1,68 @@
+{% extends 'staff_template/base_template.html' %}
+{% block page_title %}
+    Add Fine
+{% endblock page_title %}
+
+{% block main_content %}
+<section class="content">
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-md-12">
+        <div class="card card-primary">
+          <div class="card-header">
+            <h3 class="card-title">Add Fine</h3>
+          </div>
+          <!-- /.card-header -->
+          <!-- form start -->
+          <form method="post" action="{% url 'add_fine_save' %}">
+            {% csrf_token %}
+            <div class="card-body">
+              {% if messages %}
+                {% for message in messages %}
+                  {% if message.tags == 'error' %}
+                    <div class="alert alert-danger">{{ message }}</div>
+                  {% elif message.tags == 'success' %}
+                    <div class="alert alert-success">{{ message }}</div>
+                  {% endif %}
+                {% endfor %}
+              {% endif %}
+              
+              <div class="form-group">
+                <label>Student</label>
+                <select class="form-control" name="student" required>
+                  <option value="">Select Student</option>
+                  {% for student in students %}
+                    <option value="{{ student.id }}">{{ student.admin.first_name }} {{ student.admin.last_name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              
+              <div class="form-group">
+                <label>Amount</label>
+                <input type="number" class="form-control" name="amount" step="0.01" min="0" required>
+              </div>
+              
+              <div class="form-group">
+                <label>Reason</label>
+                <textarea class="form-control" name="reason" rows="3" required></textarea>
+              </div>
+              
+              <div class="form-group">
+                <label>Due Date</label>
+                <input type="date" class="form-control" name="due_date" required>
+              </div>
+            </div>
+            <!-- /.card-body -->
+
+            <div class="card-footer">
+              <button type="submit" class="btn btn-primary">Add Fine</button>
+              <a href="{% url 'manage_fines' %}" class="btn btn-default float-right">Cancel</a>
+            </div>
+          </form>
+        </div>
+        <!-- /.card -->
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock main_content %}

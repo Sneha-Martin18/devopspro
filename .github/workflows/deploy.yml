@@ -1,0 +1,100 @@
+name: Deploy to Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      version:
+        description: 'Version to deploy (tag or branch)'
+        required: true
+        default: 'latest'
+
+jobs:
+  deploy:
+    name: Deploy to ${{ github.event.inputs.environment }}
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.version }}
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Add server to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy via Docker Compose
+        env:
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          # Copy docker-compose and .env files
+          scp -r microservices/docker-compose.yml $SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/
+          
+          # SSH into server and deploy
+          ssh $SERVER_USER@$SERVER_HOST << 'EOF'
+            cd ${{ secrets.DEPLOY_PATH }}
+            
+            # Pull latest images
+            docker compose pull
+            
+            # Stop existing containers
+            docker compose down
+            
+            # Start services
+            docker compose up -d
+            
+            # Wait for services to be healthy
+            sleep 30
+            
+            # Check service status
+            docker compose ps
+            
+            # Show logs
+            docker compose logs --tail=50
+          EOF
+
+      - name: Health check
+        run: |
+          sleep 10
+          curl -f http://${{ secrets.SERVER_HOST }}:8080/health || exit 1
+          curl -f http://${{ secrets.SERVER_HOST }}:9000/ || exit 1
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          ssh ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
+            cd ${{ secrets.DEPLOY_PATH }}
+            docker compose down
+            # Restore previous version (implement your rollback strategy)
+            echo "Rollback initiated"
+          EOF
+
+      - name: Send deployment notification
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            Deployment to ${{ github.event.inputs.environment }} ${{ job.status }}
+            Version: ${{ github.event.inputs.version }}
+            Commit: ${{ github.sha }}
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}

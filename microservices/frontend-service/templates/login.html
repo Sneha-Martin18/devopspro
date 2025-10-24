@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% load static %} 
+
+{% block content %}
+
+    <body class="hold-transition login-page">
+<div class="login-box">
+  <div class="login-logo">
+    <a href="{% url 'login' %}"><b>Student </b>Management System</a>
+  </div>
+  <!-- /.login-logo -->
+  <div class="card">
+    <div class="card-body login-card-body">
+      <p class="login-box-msg">Sign in to Student Management System</p>
+      
+      {% if messages %}
+        {% for message in messages %}
+          <div class="alert alert-{{ message.tags }} alert-dismissible">
+            <button type="button" class="close" data-dismiss="alert" aria-hidden="true">×</button>
+            {{ message }}
+          </div>
+        {% endfor %}
+      {% endif %}
+
+      <form action="{% url 'doLogin' %}" method="POST" id="loginForm" autocomplete="off">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.GET.next|default:'' }}">
+        <div class="input-group mb-3">
+          <input type="email" 
+                 class="form-control {% if form.errors.email %}is-invalid{% endif %}" 
+                 placeholder="Email" 
+                 name="email" 
+                 value="{{ form.email.value|default:'' }}"
+                 required>
+          <div class="input-group-append">
+            <div class="input-group-text">
+              <span class="fas fa-envelope"></span>
+            </div>
+          </div>
+          {% if form.errors.email %}
+            <div class="invalid-feedback">
+              {{ form.errors.email|join:", " }}
+            </div>
+          {% endif %}
+        </div>
+        <div class="input-group mb-3">
+          <input type="password" 
+                 class="form-control {% if form.errors.password %}is-invalid{% endif %}" 
+                 placeholder="Password" 
+                 name="password" 
+                 required>
+          <div class="input-group-append">
+            <div class="input-group-text">
+              <span class="fas fa-lock"></span>
+            </div>
+          </div>
+          {% if form.errors.password %}
+            <div class="invalid-feedback">
+              {{ form.errors.password|join:", " }}
+            </div>
+          {% endif %}
+        </div>
+
+          <div class="col-12">
+            <button type="submit" class="btn btn-primary btn-block" id="loginButton">Sign In</button>
+            <script>
+            document.getElementById('loginForm').addEventListener('submit', function(e) {
+                var btn = document.getElementById('loginButton');
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Signing in...';
+            });
+            </script>
+          </div>
+
+          {% comment %} <div class="col-12 text-center">
+            <a href="{% url 'password_reset' %}">Reset Password</a>
+          </div>  {% endcomment %}
+
+          {% comment %} Display Messages {% endcomment %}
+          {% if messages %}
+          <div class="col-12">
+            {% for message in messages %}
+              {% if message.tags == "error" %}
+                <div class="alert alert-danger alert-dismissible fade show" role="alert" style="margin-top: 10px;">
+                  {{ message }}
+                  <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                  </button>
+                </div>
+              {% endif %}
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          <!-- /.col -->
+        </div>
+      </form>
+
+
+  </div>
+</div>
+<!-- /.login-box -->
+
+{% endblock %}

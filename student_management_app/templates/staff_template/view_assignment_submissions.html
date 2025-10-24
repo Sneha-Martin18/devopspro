@@ -1,0 +1,158 @@
+{% extends 'staff_template/base_template.html' %}
+{% load custom_filters %}
+{% block page_title %}
+View Submissions
+{% endblock page_title %}
+{% block main_content %}
+    <!-- Main content -->
+    <section class="content">
+      <div class="container-fluid">
+          <div class="row">
+              <div class="col-12">
+                  <div class="card">
+                      <div class="card-header">
+                          <h3 class="card-title">Submissions for: {{ assignment.title }}</h3>
+                      </div>
+                      <!-- /.card-header -->
+                      <div class="card-body table-responsive">
+                          <table class="table table-hover text-nowrap">
+                              <thead>
+                                  <tr>
+                                      <th>Student</th>
+                                      <th>Submission Date</th>
+                                      <th>File</th>
+                                      <th>Status</th>
+                                      <th>Marks</th>
+                                      <th>Action</th>
+                                  </tr>
+                              </thead>
+                              <tbody>
+                                {% for submission in submissions %}
+                                <tr>
+                                    <td>{{ submission.student_id.admin.first_name }} {{ submission.student_id.admin.last_name }}</td>
+                                    <td>{{ submission.submitted_at }}</td>
+                                    <td>
+                                        <a href="{{ submission.submission_file.url }}" target="_blank" class="btn btn-info btn-sm">View File</a>
+                                    </td>
+                                    <td id="statusCell{{ submission.id }}">{{ submission.status }}</td>
+                                    <td id="marksCell{{ submission.id }}">
+                                        {% if submission.marks %}
+                                            {{ submission.marks }}
+                                        {% else %}
+                                            Not graded
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if submission.status != 'graded' %}
+                                        <button type="button" class="btn btn-primary btn-sm" data-toggle="modal" data-target="#gradeModal{{ submission.id }}">
+                                            Grade
+                                        </button>
+                                        <!-- Grade Modal -->
+                                        <div class="modal fade" id="gradeModal{{ submission.id }}" tabindex="-1" role="dialog">
+                                            <div class="modal-dialog" role="document">
+                                                <div class="modal-content">
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title">Grade Submission</h5>
+                                                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                                                            <span aria-hidden="true">&times;</span>
+                                                        </button>
+                                                    </div>
+                                                    <div class="modal-body">
+                                                        <form id="gradeForm{{ submission.id }}" onsubmit="return submitGrade('{{ submission.id }}')">
+                                                            {% csrf_token %}
+                                                            <input type="hidden" name="submission_id" value="{{ submission.id }}">
+                                                            <div class="form-group">
+                                                                <label>Grade (1-10)</label>
+                                                                <input type="number" class="form-control" name="marks" id="gradeInput{{ submission.id }}" required min="1" max="10" step="0.1" placeholder="Enter grade (1-10)">
+                                                                <small id="gradeError{{ submission.id }}" class="text-danger" style="display:none;"></small>
+                                                            </div>
+                                                            <div class="text-right mt-3">
+                                                                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                                                                <button type="submit" class="btn btn-primary">Save</button>
+                                                            </div>
+                                                        </form>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="6" class="text-center">No submissions found</td>
+                                </tr>
+                                {% endfor %}
+                              </tbody>
+                          </table>
+                      </div>
+                      <!-- /.card-body -->
+                  </div>
+                  <!-- /.card -->
+              </div>
+          </div>
+      </div>
+    </section>
+{% endblock main_content %}
+{% block custom_js %}
+<script>
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function submitGrade(submissionId) {
+    const gradeInput = document.getElementById(`gradeInput${submissionId}`);
+    const errorMsg = document.getElementById(`gradeError${submissionId}`);
+    const form = document.getElementById(`gradeForm${submissionId}`);
+    const marks = parseFloat(gradeInput.value);
+    if (isNaN(marks) || marks < 1 || marks > 10) {
+        errorMsg.textContent = "Please enter a grade between 1 and 10.";
+        errorMsg.style.display = "block";
+        gradeInput.classList.add("is-invalid");
+        return false;
+    } else {
+        errorMsg.style.display = "none";
+        gradeInput.classList.remove("is-invalid");
+    }
+    const formData = new FormData(form);
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+    fetch('/grade_assignment/' + submissionId + '/', {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': csrftoken
+        },
+        body: formData
+    })
+    .then(response => response.text())
+    .then(response => {
+        if (response === 'OK') {
+            // Update the grade and status in the table without reload
+            document.getElementById('marksCell' + submissionId).textContent = marks;
+            document.getElementById('statusCell' + submissionId).textContent = 'graded';
+            alert('Grade saved successfully!');
+            // Close modal
+            $(`#gradeModal${submissionId}`).modal('hide');
+        } else {
+            errorMsg.textContent = response;
+            errorMsg.style.display = "block";
+        }
+    })
+    .catch(error => {
+        errorMsg.textContent = 'Error saving grade. Please try again.';
+        errorMsg.style.display = "block";
+    });
+    return false;
+}
+</script>
+{% endblock custom_js %}
