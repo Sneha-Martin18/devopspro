@@ -107,7 +107,7 @@ jobs:
           output-file: sbom-${{ matrix.service.name }}.spdx.json
 
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: sbom-${{ matrix.service.name }}
           path: sbom-${{ matrix.service.name }}.spdx.json
@@ -149,7 +149,7 @@ jobs:
           EOF
 
       - name: Upload manifest
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: deployment-manifest
           path: deployment-manifest.yml
